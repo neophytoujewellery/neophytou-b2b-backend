@@ -1,0 +1,22 @@
+{
+  "name": "neophytou-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Neophytou Jewellery — B2B lead-generation & outreach automation engine (backend)",
+  "scripts": {
+    "start": "node src/index.js",
+    "test:neon": "node scripts/test-neon.js",
+    "test:places": "node scripts/test-places.js",
+    "test:openai": "node scripts/test-openai.js",
+    "test:brevo": "node scripts/test-brevo.js",
+    "test:all": "node scripts/test-all.js",
+    "db:init": "node scripts/init-db.js",
+    "discover:greece": "node scripts/discover-greece.js",
+    "enrich": "node scripts/enrich.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.13.1"
+  }
+}
