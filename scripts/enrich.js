@@ -5,22 +5,30 @@ import { enrichWebsite } from '../src/lib/enrich.js';
 const CONCURRENCY = 5; // gentle parallelism — polite to sites, still fast
 
 async function run() {
-  const limit = parseInt(process.argv[2] || '0', 10); // 0 = all pending
+  const args = process.argv.slice(2);
+  const retryEmpty = args.includes('--retry-empty');
+  const limit = parseInt(args.find((a) => /^\d+$/.test(a)) || '0', 10); // 0 = all
   const limitClause = limit > 0 ? `LIMIT ${limit}` : '';
 
+  // Default: only leads never enriched.
+  // --retry-empty: any lead with a website but no email yet (re-runs improved extractor
+  //                over previously-processed-but-empty leads WITHOUT touching ones that
+  //                already have an email).
+  const where = retryEmpty
+    ? `website IS NOT NULL AND email IS NULL`
+    : `website IS NOT NULL AND enrichment_status = 'pending'`;
+
   const { rows: leads } = await pool.query(
-    `SELECT id, business_name, website FROM leads
-     WHERE website IS NOT NULL AND enrichment_status = 'pending'
-     ORDER BY id ${limitClause}`
+    `SELECT id, business_name, website FROM leads WHERE ${where} ORDER BY id ${limitClause}`
   );
 
   if (leads.length === 0) {
-    console.log('No pending leads with a website to enrich. ✅');
+    console.log('Nothing to enrich for this selection. ✅');
     await pool.end();
     return;
   }
 
-  console.log(`\n🌐 Enriching ${leads.length} website(s) (concurrency ${CONCURRENCY})...\n`);
+  console.log(`\n🌐 Enriching ${leads.length} website(s)${retryEmpty ? ' [retry-empty]' : ''} (concurrency ${CONCURRENCY})...\n`);
 
   let processed = 0;
   let withEmail = 0;
@@ -54,7 +62,7 @@ async function run() {
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
   const { rows: emailCount } = await pool.query(`SELECT count(*)::int AS n FROM leads WHERE email IS NOT NULL`);
-  const { rows: enrichedCount } = await pool.query(`SELECT count(*)::int AS n FROM leads WHERE enrichment_status <> 'pending'`);
+  const { rows: igCount } = await pool.query(`SELECT count(*)::int AS n FROM leads WHERE instagram IS NOT NULL`);
   const { rows: pendingCount } = await pool.query(`SELECT count(*)::int AS n FROM leads WHERE website IS NOT NULL AND enrichment_status = 'pending'`);
 
   console.log(`\n──────── ENRICHMENT SUMMARY ────────`);
@@ -63,7 +71,7 @@ async function run() {
   console.log(`   found instagram       : ${withIg}`);
   console.log(`   fetch failed/no data  : ${failed}`);
   console.log(`Leads with email (DB)    : ${emailCount[0].n}`);
-  console.log(`Enriched so far (DB)     : ${enrichedCount[0].n}`);
+  console.log(`Leads with instagram (DB): ${igCount[0].n}`);
   console.log(`Still pending (has site) : ${pendingCount[0].n}`);
 
   await pool.end();

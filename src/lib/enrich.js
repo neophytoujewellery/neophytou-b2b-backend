@@ -1,16 +1,31 @@
 // Phase 2 — visit a retailer's website and pull public business contact info.
-// Free / self-hosted (native fetch), light footprint: homepage + up to 2 contact pages.
+// Free / self-hosted (native fetch), light footprint: homepage + up to 3 extra pages.
+// v2: HTML-entity decode, [at]/[dot] de-obfuscation, script/style stripping, more page types.
 
 const FETCH_TIMEOUT_MS = 12000;
 const UA = 'Mozilla/5.0 (compatible; NeophytouBot/1.0; +https://www.neophytoujewellery.com)';
 
 const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
-// Strings that indicate a junk / non-business email we should ignore.
+// Strings that indicate a junk / non-business / infrastructure email we should ignore.
 const EMAIL_BLOCKLIST = [
   'example.com', 'example.org', 'domain.com', 'yourdomain', 'email.com', 'test.com',
-  'sentry.io', 'wixpress.com', 'schema.org', 'godaddy', 'w3.org',
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg',
+  'sentry.io', 'sentry', 'wixpress.com', 'wix.com', 'schema.org', 'godaddy', 'w3.org',
+  'gstatic', 'googleapis', 'jsdelivr', 'cloudflare', 'fontawesome',
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.css', '.js',
+];
+
+// Link keywords for extra pages worth checking (lower pri = checked first).
+const LINK_KEYWORDS = [
+  { kw: 'contact', pri: 0 },
+  { kw: 'epikoin', pri: 0 },
+  { kw: 'επικοιν', pri: 0 },
+  { kw: 'about', pri: 1 },
+  { kw: 'σχετικ', pri: 1 },
+  { kw: 'impressum', pri: 1 },
+  { kw: 'imprint', pri: 1 },
+  { kw: 'terms', pri: 2 },
+  { kw: 'όρο', pri: 2 },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -44,42 +59,72 @@ function normaliseUrl(website) {
   }
 }
 
-// Find likely "contact" pages (English + Greek) from homepage links.
-function findContactLinks(html, baseUrl) {
-  const links = new Set();
+function safeChar(code) {
+  try { return String.fromCharCode(code); } catch { return ''; }
+}
+
+// Turn &#64; / &#x40; / &commat; etc. into real characters (a common email obfuscation).
+function decodeEntities(s) {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => safeChar(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => safeChar(parseInt(d, 10)))
+    .replace(/&commat;/gi, '@')
+    .replace(/&period;/gi, '.')
+    .replace(/&amp;/gi, '&');
+}
+
+// Turn "info [at] domain [dot] gr" / "info (at) domain (dot) gr" / "info @ domain . gr" into a real address.
+function deobfuscate(s) {
+  return s
+    .replace(/\s*[[({<]\s*at\s*[\])}>]\s*/gi, '@')
+    .replace(/\s*[[({<]\s*dot\s*[\])}>]\s*/gi, '.')
+    .replace(/\s+@\s+/g, '@');
+}
+
+// Collect up to 3 extra pages (contact/about/imprint/terms), best first.
+function findExtraLinks(html, baseUrl) {
+  const scored = new Map(); // absolute href -> priority
   const re = /href\s*=\s*["']([^"']+)["']/gi;
   let m;
   while ((m = re.exec(html)) !== null) {
     const low = m[1].toLowerCase();
-    if (low.includes('contact') || low.includes('epikoin') || low.includes('%cf') || low.includes('επικοιν')) {
-      try { links.add(new URL(m[1], baseUrl).href); } catch { /* ignore */ }
+    for (const { kw, pri } of LINK_KEYWORDS) {
+      if (low.includes(kw)) {
+        try {
+          const abs = new URL(m[1], baseUrl).href;
+          if (!scored.has(abs) || scored.get(abs) > pri) scored.set(abs, pri);
+        } catch { /* ignore */ }
+        break;
+      }
     }
   }
-  return [...links].slice(0, 2);
+  return [...scored.entries()].sort((a, b) => a[1] - b[1]).map(([href]) => href).slice(0, 3);
 }
 
 function extractEmails(html, siteDomain) {
   const found = new Set();
+  const decoded = decodeEntities(html);
 
   // mailto: links are the most reliable
   const mailtoRe = /mailto:([^"'?>\s]+)/gi;
   let m;
-  while ((m = mailtoRe.exec(html)) !== null) {
+  while ((m = mailtoRe.exec(decoded)) !== null) {
     try { found.add(decodeURIComponent(m[1]).toLowerCase()); } catch { found.add(m[1].toLowerCase()); }
   }
 
-  // plain-text emails in the page body
-  const text = html.replace(/<[^>]+>/g, ' ');
+  // strip scripts/styles (they hold DSNs, asset URLs, etc.), then de-obfuscate text
+  let text = decoded.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ');
+  text = text.replace(/<[^>]+>/g, ' ');
+  text = deobfuscate(text);
   for (const e of text.match(EMAIL_RE) || []) found.add(e.toLowerCase());
 
   const clean = [...found].filter((e) => e.length <= 100 && !EMAIL_BLOCKLIST.some((b) => e.includes(b)));
   if (clean.length === 0) return null;
 
-  // Prefer an email on the site's own domain (real business email),
-  // then generic inboxes like info@ / contact@.
+  // Prefer an email on the site's own domain, then generic inboxes like info@/contact@.
   const onDomain = siteDomain ? clean.filter((e) => e.endsWith('@' + siteDomain)) : [];
   const pool = onDomain.length ? onDomain : clean;
-  const rank = (e) => (/^(info|contact|sales|hello|shop|eshop|orders)@/.test(e) ? 0 : 1);
+  const rank = (e) => (/^(info|contact|sales|hello|shop|eshop|orders|mail)@/.test(e) ? 0 : 1);
   pool.sort((a, b) => rank(a) - rank(b));
   return pool[0];
 }
@@ -108,13 +153,13 @@ export async function enrichWebsite(website) {
   let email = extractEmails(homeHtml, siteDomain);
   let instagram = extractInstagram(homeHtml);
 
-  if (!email) {
-    for (const link of findContactLinks(homeHtml, urlObj.href)) {
+  if (!email || !instagram) {
+    for (const link of findExtraLinks(homeHtml, urlObj.href)) {
       const html = await fetchPage(link);
       if (!html) continue;
-      email = extractEmails(html, siteDomain);
+      if (!email) email = extractEmails(html, siteDomain);
       if (!instagram) instagram = extractInstagram(html);
-      if (email) break;
+      if (email && instagram) break;
       await sleep(200);
     }
   }

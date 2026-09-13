@@ -13,7 +13,9 @@
     "test:all": "node scripts/test-all.js",
     "db:init": "node scripts/init-db.js",
     "discover:greece": "node scripts/discover-greece.js",
-    "enrich": "node scripts/enrich.js"
+    "enrich": "node scripts/enrich.js",
+    "score": "node scripts/score.js",
+    "sync": "node scripts/sync-sheet.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
