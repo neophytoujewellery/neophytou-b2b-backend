@@ -15,7 +15,13 @@
     "discover:greece": "node scripts/discover-greece.js",
     "enrich": "node scripts/enrich.js",
     "score": "node scripts/score.js",
-    "sync": "node scripts/sync-sheet.js"
+    "sync": "node scripts/sync-sheet.js",
+    "suppress": "node scripts/suppress.js",
+    "eligible": "node scripts/check-eligible.js",
+    "send": "node scripts/send-selected.js",
+    "webhook": "node scripts/webhook-server.js",
+    "test:webhook": "node scripts/test-webhook.js",
+    "discover:country": "node scripts/discover-country.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

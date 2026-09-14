@@ -1,31 +1,10 @@
-// Phase 3 (evidence-based) — fetch a retailer's homepage and detect high-end vs
-// negative jewellery signals in English AND Greek, to feed OpenAI real evidence.
+// Phase 3/7 — fetch a retailer's homepage and detect high-end vs negative
+// jewellery signals, using per-country keyword sets from the country registry.
+
+import { signalsFor, countryKey } from '../data/countries.js';
 
 const FETCH_TIMEOUT_MS = 10000;
 const UA = 'Mozilla/5.0 (compatible; NeophytouBot/1.0; +https://www.neophytoujewellery.com)';
-
-// Positive = points toward high-end fine/diamond jewellery (Neophytou's target).
-const POSITIVE = [
-  // English
-  '18k', '18kt', '18 kt', '18 karat', '750', 'diamond', 'lab-grown', 'lab grown', 'labgrown',
-  'brilliant', 'tennis bracelet', 'tennis necklace', 'engagement', 'bridal', 'solitaire',
-  'carat', 'luxury', 'white gold', 'yellow gold', 'rose gold', 'fine jewel',
-  // Greek
-  'διαμ', 'μπριγιαν', 'μπριγιάν', 'λευκόχρυσ', 'λευκοχρυσ', 'αρραβ', 'νυφικ',
-  'μονόπετρ', 'μονοπετρ', 'καρατ', 'καράτ', 'πολύτιμ', 'πολυτιμ', 'χρυσ',
-];
-
-// Negative = points away (costume / steel / silver-only / plated / pawn).
-const NEGATIVE = [
-  // English
-  'stainless', 'steel', 'costume', 'fashion jewel', 'fashion accessor', 'plated',
-  'gold plated', 'silver plated', 'sterling silver', '925 silver', 'pawn', 'cash for gold',
-  // Greek
-  'ατσαλι', 'ατσάλι', 'ασημ', 'ασήμ', 'επιχρυσ', 'ενεχυρ', 'ενεχυροδαν',
-];
-
-// Name clearly indicates a jewellery business (EN + GR + a few EU languages for later).
-const JEWELLERY_NAME = /jewel|joyer|gioieller|bijou|schmuck|κοσμημ|κοσμήμ|κόσμημ|χρυσοχ/i;
 
 export function domainOf(website) {
   if (!website) return '';
@@ -47,7 +26,6 @@ function normaliseUrl(website) {
   }
 }
 
-// Build up to 2 candidate URLs: original + scheme-swapped (recovers http-only sites).
 function altUrls(href) {
   const set = new Set([href]);
   try {
@@ -95,9 +73,12 @@ async function fetchText(website) {
 
 /**
  * Build the evidence bundle for one lead (fetches the homepage if it has a website).
- * @returns {Promise<{id, name, domain, city, signals_positive, signals_negative, snippet, fetched, name_is_jewellery}>}
+ * Country is taken from the lead's `country` field (defaults to Greece).
+ * @returns {Promise<{id,name,domain,city,signals_positive,signals_negative,snippet,fetched,name_is_jewellery}>}
  */
 export async function collectEvidence(lead) {
+  const { positive, negative, jewelleryName } = signalsFor(countryKey(lead.country));
+
   const name = lead.business_name || '';
   const item = {
     id: lead.id,
@@ -108,7 +89,7 @@ export async function collectEvidence(lead) {
     signals_negative: [],
     snippet: '',
     fetched: false,
-    name_is_jewellery: JEWELLERY_NAME.test(name),
+    name_is_jewellery: jewelleryName.test(name),
   };
 
   if (!lead.website) return item;
@@ -117,8 +98,8 @@ export async function collectEvidence(lead) {
   if (!text) return item;
 
   const low = text.toLowerCase();
-  item.signals_positive = POSITIVE.filter((k) => low.includes(k));
-  item.signals_negative = NEGATIVE.filter((k) => low.includes(k));
+  item.signals_positive = positive.filter((k) => low.includes(k));
+  item.signals_negative = negative.filter((k) => low.includes(k));
   item.snippet = text.replace(/\s+/g, ' ').trim().slice(0, 700);
   item.fetched = true;
   return item;

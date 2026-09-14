@@ -1,0 +1,4 @@
+-- Phase 6d — webhook events
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS complained    BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_event    TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMPTZ;

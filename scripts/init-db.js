@@ -12,6 +12,9 @@ const MIGRATIONS = [
   '003_add_scoring.sql',
   '004_add_validation.sql',
   '005_add_sheet_fields.sql',
+  '006_create_suppression.sql',
+  '007_add_send_fields.sql',
+  '008_add_event_fields.sql',
 ];
 
 async function run() {
