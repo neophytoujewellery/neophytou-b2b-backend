@@ -14,7 +14,11 @@ const env = {
   SENDER_EMAIL: process.env.SENDER_EMAIL,
   SENDER_NAME: process.env.SENDER_NAME,
   WEBHOOK_PORT: process.env.WEBHOOK_PORT,     // optional — default 3000
-  WEBHOOK_SECRET: process.env.WEBHOOK_SECRET, // optional — shared secret for the webhook URL
+  WEBHOOK_SECRET: process.env.WEBHOOK_SECRET,
+  API_PORT: process.env.API_PORT,       // control API port (default 5000)
+  API_TOKEN: process.env.API_TOKEN ,// optional — shared secret for the webhook URL
+  PUBLIC_URL: process.env.PUBLIC_URL,     // frontend base URL for unsubscribe links
+  UNSUB_SECRET: process.env.UNSUB_SECRET,
 };
 
 export function assertEnv() {

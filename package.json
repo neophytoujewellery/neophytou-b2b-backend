@@ -21,9 +21,13 @@
     "send": "node scripts/send-selected.js",
     "webhook": "node scripts/webhook-server.js",
     "test:webhook": "node scripts/test-webhook.js",
-    "discover:country": "node scripts/discover-country.js"
+    "discover:country": "node scripts/discover-country.js",
+    "api": "node scripts/api-server.js",
+    "draft": "node scripts/draft-selected.js",
+    "followup": "node scripts/send-followup.js"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.5",
     "pg": "^8.13.1"
   }

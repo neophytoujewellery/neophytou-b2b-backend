@@ -3,8 +3,8 @@ import pool from '../src/db/pool.js';
 import env from '../src/config/env.js';
 import { loadSuppressedSet } from '../src/lib/suppression.js';
 import { checkEligible } from '../src/lib/eligibility.js';
-import { buildEmail } from '../src/lib/template.js';
 import { sendEmail } from '../src/lib/brevo.js';
+import { unsubUrl } from '../src/lib/unsubscribe.js';
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -16,6 +16,21 @@ function parseArgs() {
   return { mode, yes, limitArg };
 }
 
+const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function buildEmail(bodyText, unsub, senderName) {
+  const html =
+    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#222;max-width:560px">` +
+    `${escHtml(bodyText).replace(/\n/g, '<br>')}` +
+    `<div style="margin-top:28px;padding-top:14px;border-top:1px solid #e5e5e5;font-size:12px;color:#999;text-align:center">` +
+    `${escHtml(senderName)}<br>` +
+    `Don't want to receive these emails? ` +
+    `<a href="${unsub}" style="color:#555;font-weight:bold;text-decoration:underline">Unsubscribe</a>` +
+    `</div></div>`;
+  const text = `${bodyText}\n\n—\n${senderName}\nDon't want these emails? Unsubscribe: ${unsub}`;
+  return { html, text };
+}
+
 async function run() {
   const { mode, yes, limitArg } = parseArgs();
 
@@ -23,7 +38,6 @@ async function run() {
   const senderName = env.SENDER_NAME || 'Neophytou Jewellery';
   const testEmails = String(env.TEST_EMAILS || '').split(',').map((s) => s.trim()).filter(Boolean);
 
-  // ---- Hard safety gates ----
   if (mode !== 'dry' && !senderEmail) {
     console.error('❌ SENDER_EMAIL not set in .env — refusing to send.');
     process.exit(1);
@@ -38,14 +52,14 @@ async function run() {
     process.exit(1);
   }
 
-  // In test mode, cap how many leads we process so we never flood our own inbox.
   const limit = limitArg > 0 ? limitArg : mode === 'test' ? 5 : 0;
   const limitClause = limit > 0 ? `LIMIT ${limit}` : '';
 
   const suppressedSet = await loadSuppressedSet();
 
   const { rows: leads } = await pool.query(
-    `SELECT id, business_name, city, email, email_valid, do_not_contact, campaign_status, emails_sent, fit_category, fit_score
+    `SELECT id, business_name, city, email, email_valid, do_not_contact, campaign_status, emails_sent,
+            fit_category, fit_score, draft_subject, draft_body, draft_status
      FROM leads
      WHERE send_selected = true
      ORDER BY fit_score DESC ${limitClause}`
@@ -70,11 +84,19 @@ async function run() {
       continue;
     }
 
-    const { subject, html, text } = buildEmail(lead, { senderName, senderEmail });
+    if (lead.draft_status !== 'approved' || !lead.draft_body) {
+      console.log(`   ⏭️  ${lead.business_name} — skipped (draft not approved)`);
+      skipped++;
+      continue;
+    }
 
-    // Decide recipients strictly by mode — no leaks possible.
+    const subject = lead.draft_subject || 'Wholesale partnership — Neophytou fine jewellery';
+    const unsub = unsubUrl(lead.email);
+    const { html, text } = buildEmail(lead.draft_body, unsub, senderName);
+
     if (mode === 'dry') {
       console.log(`   ▶️  WOULD send to ${lead.email}  (${lead.business_name})`);
+      console.log(`        unsubscribe link: ${unsub}`);
       continue;
     }
 
@@ -83,16 +105,11 @@ async function run() {
 
     try {
       const { messageId } = await sendEmail({
-        to: recipients,
-        subject: finalSubject,
-        html,
-        text,
-        senderEmail,
-        senderName,
+        to: recipients, subject: finalSubject, html, text, senderEmail, senderName,
         tags: [`mode:${mode}`, `fit:${lead.fit_category}`],
+        headers: { 'List-Unsubscribe': `<${unsub}>` },
       });
 
-      // Only a LIVE send marks the real lead as contacted.
       if (mode === 'live') {
         await pool.query(
           `UPDATE leads SET campaign_status = 'sent', emails_sent = emails_sent + 1,

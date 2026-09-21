@@ -14,7 +14,9 @@ const ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
  * @param {string[]} [p.tags]
  * @returns {Promise<{messageId:string}>}
  */
-export async function sendEmail({ to, subject, html, text, senderEmail, senderName, tags }) {
+
+
+export async function sendEmail({ to, subject, html, text, senderEmail, senderName, tags, headers }) {
   const recipients = (Array.isArray(to) ? to : [to])
     .filter(Boolean)
     .map((t) => (typeof t === 'string' ? { email: t } : t));
@@ -29,6 +31,7 @@ export async function sendEmail({ to, subject, html, text, senderEmail, senderNa
   };
   if (text) body.textContent = text;
   if (tags) body.tags = tags;
+  if (headers) body.headers = headers;
 
   const res = await fetch(ENDPOINT, {
     method: 'POST',

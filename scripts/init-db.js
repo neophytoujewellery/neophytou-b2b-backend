@@ -15,6 +15,12 @@ const MIGRATIONS = [
   '006_create_suppression.sql',
   '007_add_send_fields.sql',
   '008_add_event_fields.sql',
+  '009_create_admins.sql',
+  '010_create_jobs.sql',
+  '011_add_drafts.sql',
+  '012_add_source.sql',
+  '013_add_application_status.sql',
+  '014_add_followups.sql',
 ];
 
 async function run() {
