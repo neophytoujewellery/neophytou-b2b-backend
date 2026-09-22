@@ -191,7 +191,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0',() => {
   console.log(`\n⚙️  Neophytou control API on  http://localhost:${PORT}`);
   console.log(`   Job types: ${Object.keys(JOBS).join(', ')}`);
   console.log(`   Auth: send header  x-api-token: <API_TOKEN>\n`);
