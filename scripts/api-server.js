@@ -110,16 +110,16 @@ const server = http.createServer(async (req, res) => {
       const notes = [String(body.notes || '').trim(), stock ? `Stocks: ${stock}` : ''].filter(Boolean).join(' | ') || null;
       const placeId = 'inbound:' + email;
       await pool.query(
-        `INSERT INTO leads (place_id, business_name, website, country, city, search_term, email, contact_name, notes, source, applied_at)
-         VALUES ($1,$2,$3,$4,$5,'inbound',$6,$7,$8,'inbound_application', now())
+        `INSERT INTO leads (place_id, business_name, website, country, city, search_term, email, contact_name, notes, source, applied_at, application_status)
+         VALUES ($1,$2,$3,$4,$5,'inbound',$6,$7,$8,'inbound_application', now(), 'pending')
          ON CONFLICT (place_id) DO UPDATE SET
            business_name = EXCLUDED.business_name, website = EXCLUDED.website,
            country = EXCLUDED.country, city = EXCLUDED.city,
            contact_name = EXCLUDED.contact_name, notes = EXCLUDED.notes,
-           source = 'inbound_application', applied_at = now()`,
+           source = 'inbound_application', applied_at = now(),
+           application_status = COALESCE(leads.application_status, 'pending')`,
         [placeId, business, body.website || null, body.country || null, body.city || null, email, body.contact || null, notes]
       );
-      await pool.query(`UPDATE leads SET application_status = COALESCE(application_status, 'pending') WHERE place_id = $1`, [placeId]);
       return json(res, { ok: true });
     } catch (err) {
       return json(res, { error: err.message }, 500);
