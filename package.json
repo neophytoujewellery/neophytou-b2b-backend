@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Neophytou Jewellery — B2B lead-generation & outreach automation engine (backend)",
   "scripts": {
-    "start": "node src/index.js",
+"start": "node scripts/api-server.js",
     "test:neon": "node scripts/test-neon.js",
     "test:places": "node scripts/test-places.js",
     "test:openai": "node scripts/test-openai.js",
