@@ -12,7 +12,7 @@ import { createJob, setStatus, appendLog, getJob, listJobs, runningJobId } from 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BACKEND_ROOT = join(__dirname, '..'); // scripts/ -> backend/
 
-const PORT = parseInt(env.API_PORT || '5000', 10);
+const PORT = parseInt(process.env.PORT || env.API_PORT || '5000', 10);
 const TOKEN = env.API_TOKEN || '';
 
 if (!TOKEN) {
