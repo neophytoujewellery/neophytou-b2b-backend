@@ -7,12 +7,13 @@ import env from '../src/config/env.js';
 import pool from '../src/db/pool.js';
 import { getSetting } from '../src/lib/settings.js';
 import { sendToLead } from '../src/lib/mailer.js';
+import { handleEvent } from '../src/lib/events.js';
 import { createJob, setStatus, appendLog, getJob, listJobs, runningJobId } from '../src/lib/jobs.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BACKEND_ROOT = join(__dirname, '..'); // scripts/ -> backend/
 
-const PORT = parseInt(process.env.PORT || env.API_PORT || '5000', 10);
+const PORT = parseInt(env.API_PORT || '5000', 10);
 const TOKEN = env.API_TOKEN || '';
 
 if (!TOKEN) {
@@ -125,6 +126,25 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Public: Brevo delivery/open/click/bounce/unsubscribe webhook.
+  if (req.method === 'POST' && url.pathname === '/webhooks/brevo') {
+    const secret = env.WEBHOOK_SECRET || '';
+    if (secret && url.searchParams.get('secret') !== secret) {
+      return json(res, { error: 'unauthorized' }, 401);
+    }
+    try {
+      const payload = JSON.parse((await readBody(req)) || '{}');
+      const events = Array.isArray(payload) ? payload : [payload];
+      for (const ev of events) {
+        const r = await handleEvent(ev);
+        console.log(`[webhook] ${ev.event || ev.type || '?'} ${ev.email || '?'} \u2192 ${JSON.stringify(r)}`);
+      }
+      return json(res, { ok: true });
+    } catch (err) {
+      return json(res, { error: err.message }, 400);
+    }
+  }
+
   // token auth for everything else
   if (req.headers['x-api-token'] !== TOKEN) return json(res, { error: 'unauthorized' }, 401);
 
@@ -191,7 +211,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0',() => {
+server.listen(PORT, () => {
   console.log(`\n⚙️  Neophytou control API on  http://localhost:${PORT}`);
   console.log(`   Job types: ${Object.keys(JOBS).join(', ')}`);
   console.log(`   Auth: send header  x-api-token: <API_TOKEN>\n`);
